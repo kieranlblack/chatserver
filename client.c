@@ -6,6 +6,7 @@
 #include <strings.h>
 #include <sys/socket.h>
 #include <sys/unistd.h>
+#include <time.h>
 
 #include "client.h"
 
@@ -18,7 +19,7 @@ int main(int argc, char **argv) {
     }
 
     strncpy(send_segment.header.username, argv[1], MAX_USERNAME_LEN);
-    strncpy(send_segment.header.password, argv[2], MAX_PASSWORD_LEN);
+    strncpy(send_segment.body, argv[2], MAX_PASSWORD_LEN);
 
     int sockfd;
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -41,27 +42,80 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    if (write(sockfd, &send_segment, SEGMENT_LEN) < -1) {
+        perror("write");
+        return EXIT_FAILURE;
+    }
+
     pthread_t handle_input_thread;
     pthread_create(&handle_input_thread, NULL, (void *) handle_input, &sockfd);
     pthread_t handle_recieve_thread;
     pthread_create(&handle_recieve_thread, NULL, (void *) handle_recieve, &sockfd);
 
-    pthread_join(handle_input_thread, NULL);
     pthread_join(handle_recieve_thread, NULL);
 
-    perror("end");
-    return EXIT_FAILURE;
+    return EXIT_SUCCESS;
 }
 
 void *handle_recieve(int *fd) {
+    printf("<%s> ", send_segment.header.username);
+    fflush(stdout);
+
     for (;;) {
-        if (read(*fd, &segment, SEGMENT_LEN) < -1) {
+        bzero(&segment, SEGMENT_LEN);
+
+        ssize_t n;
+        if ((n = read(*fd, &segment, SEGMENT_LEN)) < -1) {
             perror("read");
             return (void *) -1;
         }
 
-        printf("%s", segment.body);
+        if (!n) {
+            close(*fd);
+            return (void *) 1;
+        }
+
+        printf("\033[F\033[J%.*s", (int) strnlen(segment.body, BODY_LEN) - 1, segment.body);
+        printf("\n<%s> ", send_segment.header.username);
+        fflush(stdout);
     }
+}
+
+int transform_input(char *s) {
+    if (!(*s) || *s != ':') {
+        return 0;
+    }
+
+    uint hash = 0x1;
+    for (char *ch = s; *ch; ch++) {
+        hash += hash * 31 + *ch;
+    }
+
+    time_t current_time;
+    struct tm *broken_down_time;
+    int hour_offset = 0;
+    switch (hash) {
+    case HAPPY:
+        strcpy(s, "[feeling happy]\n");
+        break;
+    case SAD:
+        strcpy(s, "[feeling sad]\n");
+        break;
+    case TIME_PLUS_ONE_HOUR:
+        hour_offset = 1;
+    case TIME:
+        time(&current_time);
+        broken_down_time = localtime(&current_time);
+        broken_down_time->tm_hour += hour_offset;
+        mktime(broken_down_time);
+        strcpy(s, asctime(broken_down_time));
+        break;
+    case EXIT:
+        return -1;
+        break;
+    }
+
+    return 0;
 }
 
 void *handle_input(int *fd) {
@@ -69,13 +123,18 @@ void *handle_input(int *fd) {
 
     for (;;) {
         bzero(input_buf, BODY_LEN);
-        printf("<%s> ", send_segment.header.username);
+
         if (!fgets(input_buf, BODY_LEN, stdin)) {
             perror("fgets");
             return (void *) -1;
         }
 
-        strncpy(send_segment.body, input_buf, BODY_LEN);
+        if (transform_input(input_buf)) {
+            close(*fd);
+            exit(0);
+        }
+
+        bcopy(input_buf, &send_segment.body, BODY_LEN);
 
         if (write(*fd, &send_segment, SEGMENT_LEN) < 0) {
             perror("write");

@@ -13,6 +13,8 @@
 #include "server.h"
 
 struct epoll_event events[MAX_EVENTS];
+int epollfd;
+
 struct client_t *client = NULL;
 int num_clients = 0;
 
@@ -45,7 +47,6 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    int epollfd;
     if ((epollfd = epoll_create1(0)) < 0) {
         perror("epoll_create1");
         return EXIT_FAILURE;
@@ -72,14 +73,14 @@ int main(void) {
 
             if (fd == listenfd) {
                 puts("new client connecting");
-                if (accept_client(listenfd, epollfd) < 0) {
+                if (accept_client(listenfd) < 0) {
                     return EXIT_FAILURE;
                 }
                 continue;
             }
 
             if (events[i].events & EPOLLRDHUP) {
-                if (remove_client(fd, epollfd) < 0) {
+                if (remove_client(fd) < 0) {
                     return EXIT_FAILURE;
                 }
                 continue;
@@ -97,7 +98,7 @@ int main(void) {
     return EXIT_FAILURE;
 };
 
-int remove_client(int fd, int epollfd) {
+int remove_client(int fd) {
     if (epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, NULL) < 0) {
         perror("epoll_ctl: del");
         return -1;
@@ -122,7 +123,7 @@ int remove_client(int fd, int epollfd) {
     return 1;
 }
 
-int accept_client(int listenfd, int epollfd) {
+int accept_client(int listenfd) {
     if (num_clients > MAX_CLIENTS) {
         return 1;
     }
@@ -156,6 +157,7 @@ int accept_client(int listenfd, int epollfd) {
         }
 
         client->fd = childfd;
+        client->is_authenticated = false;
         client->next = NULL;
     } else {
         struct client_t *curr = client;
@@ -169,6 +171,7 @@ int accept_client(int listenfd, int epollfd) {
         }
 
         curr->next->fd = childfd;
+        curr->next->is_authenticated = false;
         curr->next->next = NULL;
     }
 
@@ -176,12 +179,12 @@ int accept_client(int listenfd, int epollfd) {
     return 1;
 }
 
-int broadcast_to_clients(char *str, int fd) {
+int broadcast_to_authenticated_clients(char *str) {
     bzero(&segment, BODY_LEN);
     strncpy(segment.body, str, BODY_LEN);
 
     for (struct client_t *curr = client; curr; curr = curr->next) {
-        if (curr->fd == fd) {
+        if (!client->is_authenticated) {
             continue;
         }
 
@@ -220,15 +223,29 @@ int read_from_client(int fd) {
         return -1;
     }
 
-    if (strncmp(PASSWORD, segment.header.password, MAX_USERNAME_LEN)) {
-        puts("someone tried to connect with the wrong password");
+    struct client_t *curr = client;
+    while (curr && curr->fd != fd) {
+        curr = curr->next;
+    }
+
+    if (!curr) {
+        fprintf(stderr, "fd does not exist\n");
+        return -1;
+    }
+
+    if (!curr->is_authenticated) {
+        if (!strcmp(PASSWORD, segment.body)) {
+            curr->is_authenticated = true;
+            return 1;
+        }
+
         send_to_client("<SERVER> incorrect password\n", fd);
-        return 1;
+        return remove_client(fd);
     }
 
     bzero(msg_buf, BODY_LEN);
-    snprintf(msg_buf, BODY_LEN, "<%s> %.*s\n", segment.header.username, (int) strnlen(segment.body, BODY_LEN) - 1, segment.body);
+    snprintf(msg_buf, BODY_LEN, "<%s> %.*s\n", segment.header.username, (int) strnlen(segment.body, BODY_LEN), segment.body);
     fputs(msg_buf, stdout);
 
-    return broadcast_to_clients(msg_buf, fd);
+    return broadcast_to_authenticated_clients(msg_buf);
 }
