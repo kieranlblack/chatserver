@@ -15,5 +15,6 @@ void *handle_input();
 int transform_input(char *s);
 void *handle_recieve();
 void handle_sigint(int signum);
+void wrap_up(void);
 
 #endif

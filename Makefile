@@ -10,7 +10,7 @@ client.o: client.c client.h defs.h
 	gcc -c client.c -g -o client.o
 
 client: client.o
-	gcc client.o -lpthread -o client
+	gcc client.o -pthread -o client
 
 clean:
 	-rm -f server.o

@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <errno.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -57,7 +58,7 @@ int main(int argc, char **argv) {
     };
     sigaction(SIGINT, &act, NULL);
 
-    if (write(sockfd, &send_segment, SEGMENT_LEN) < -1) {
+    if (write(sockfd, &send_segment, SEGMENT_LEN) < 0) {
         perror("write");
         return EXIT_FAILURE;
     }
@@ -71,18 +72,21 @@ int main(int argc, char **argv) {
 
     pthread_join(handle_recieve_thread, NULL);
 
-    pthread_mutex_destroy(&sent_lock);
-    close(sockfd);
-    return EXIT_SUCCESS;
+    wrap_up();
+    return EXIT_FAILURE;
 }
 
 void handle_sigint(int signum) {
     sigint_received = true;
-    pthread_kill(handle_input_thread, SIGINT);
-    pthread_kill(handle_recieve_thread, SIGINT);
 }
 
 void *handle_recieve() {
+    struct sigaction act = {
+        .sa_handler = handle_sigint,
+        .sa_flags = SA_RESTART
+    };
+    sigaction(SIGINT, &act, NULL);
+
     printf("<%s> ", send_segment.header.username);
     fflush(stdout);
 
@@ -90,13 +94,17 @@ void *handle_recieve() {
         bzero(&segment, SEGMENT_LEN);
 
         ssize_t n;
-        if ((n = read(sockfd, &segment, SEGMENT_LEN)) < -1) {
+        if ((n = read(sockfd, &segment, SEGMENT_LEN)) < 0) {
+            if (errno == EINTR) {
+                wrap_up();
+            }
+
             perror("read");
             return (void *) -1;
         }
 
         if (!n) {
-            close(sockfd);
+            wrap_up();
             return (void *) 1;
         }
 
@@ -111,6 +119,13 @@ void *handle_recieve() {
         printf("<%s> ", send_segment.header.username);
         fflush(stdout);
     }
+}
+
+void wrap_up(void) {
+    close(sockfd);
+    pthread_mutex_destroy(&sent_lock);
+    printf("\n");
+    exit(0);
 }
 
 int transform_input(char *s) {
@@ -151,20 +166,27 @@ int transform_input(char *s) {
 }
 
 void *handle_input() {
-    char input_buf[BODY_LEN] = { 0x0 };
+    struct sigaction act = {
+        .sa_handler = handle_sigint,
+        .sa_flags = SA_RESTART
+    };
+    sigaction(SIGINT, &act, NULL);
+
+    char input_buf[BODY_LEN] = {};
+    uint8_t chars_input;
 
     while (!sigint_received) {
         bzero(input_buf, BODY_LEN);
+        chars_input = 0;
 
-        if (!fgets(input_buf, BODY_LEN, stdin)) {
-            perror("fgets");
-            return (void *) -1;
+        while ((input_buf[chars_input++] = fgetc(stdin)) != '\n') {
+            if (errno == EINTR) {
+                wrap_up();
+            }
         }
 
         if (transform_input(input_buf)) {
-            close(sockfd);
-            pthread_mutex_destroy(&sent_lock);
-            exit(0);
+            wrap_up();
         }
 
         bcopy(input_buf, &send_segment.body, BODY_LEN);
