@@ -11,8 +11,9 @@
 #define TIME_PLUS_ONE_HOUR 0xb6ca2e4a
 #define EXIT 0xb88db28a
 
-void *handle_input(int *fd);
+void *handle_input();
 int transform_input(char *s);
-void *handle_recieve(int *fd);
+void *handle_recieve();
+void handle_sigint(int signum);
 
 #endif

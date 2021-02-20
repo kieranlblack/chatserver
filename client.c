@@ -1,5 +1,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +12,15 @@
 
 #include "client.h"
 
+volatile sig_atomic_t sigint_received = false;
+
 struct segment_t send_segment;
+pthread_mutex_t sent_lock;
+pthread_t handle_input_thread;
+pthread_t handle_recieve_thread;
+
+bool sent = false;
+int sockfd;
 
 int main(int argc, char **argv) {
     if (argc != 3) {
@@ -21,7 +31,6 @@ int main(int argc, char **argv) {
     strncpy(send_segment.header.username, argv[1], MAX_USERNAME_LEN);
     strncpy(send_segment.body, argv[2], MAX_PASSWORD_LEN);
 
-    int sockfd;
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket");
         return EXIT_FAILURE;
@@ -42,41 +51,64 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    struct sigaction act = {
+        .sa_handler = handle_sigint,
+        .sa_flags = SA_RESTART
+    };
+    sigaction(SIGINT, &act, NULL);
+
     if (write(sockfd, &send_segment, SEGMENT_LEN) < -1) {
         perror("write");
         return EXIT_FAILURE;
     }
 
-    pthread_t handle_input_thread;
-    pthread_create(&handle_input_thread, NULL, (void *) handle_input, &sockfd);
-    pthread_t handle_recieve_thread;
-    pthread_create(&handle_recieve_thread, NULL, (void *) handle_recieve, &sockfd);
+    if (pthread_mutex_init(&sent_lock, NULL)) {
+        perror("pthread_mutex_init");
+    }
+
+    pthread_create(&handle_input_thread, NULL, (void *) handle_input, NULL);
+    pthread_create(&handle_recieve_thread, NULL, (void *) handle_recieve, NULL);
 
     pthread_join(handle_recieve_thread, NULL);
 
+    pthread_mutex_destroy(&sent_lock);
+    close(sockfd);
     return EXIT_SUCCESS;
 }
 
-void *handle_recieve(int *fd) {
+void handle_sigint(int signum) {
+    sigint_received = true;
+    pthread_kill(handle_input_thread, SIGINT);
+    pthread_kill(handle_recieve_thread, SIGINT);
+}
+
+void *handle_recieve() {
     printf("<%s> ", send_segment.header.username);
     fflush(stdout);
 
-    for (;;) {
+    while (!sigint_received) {
         bzero(&segment, SEGMENT_LEN);
 
         ssize_t n;
-        if ((n = read(*fd, &segment, SEGMENT_LEN)) < -1) {
+        if ((n = read(sockfd, &segment, SEGMENT_LEN)) < -1) {
             perror("read");
             return (void *) -1;
         }
 
         if (!n) {
-            close(*fd);
+            close(sockfd);
             return (void *) 1;
         }
 
+        pthread_mutex_lock(&sent_lock);
+        if (strncmp(segment.header.username, send_segment.header.username, MAX_USERNAME_LEN) && !sent) {
+            printf("\n");
+        }
+        sent = 0;
+        pthread_mutex_unlock(&sent_lock);
+
         printf("\033[F\033[J%.*s", (int) strnlen(segment.body, BODY_LEN) - 1, segment.body);
-        printf("\n<%s> ", send_segment.header.username);
+        printf("<%s> ", send_segment.header.username);
         fflush(stdout);
     }
 }
@@ -118,10 +150,10 @@ int transform_input(char *s) {
     return 0;
 }
 
-void *handle_input(int *fd) {
+void *handle_input() {
     char input_buf[BODY_LEN] = { 0x0 };
 
-    for (;;) {
+    while (!sigint_received) {
         bzero(input_buf, BODY_LEN);
 
         if (!fgets(input_buf, BODY_LEN, stdin)) {
@@ -130,13 +162,18 @@ void *handle_input(int *fd) {
         }
 
         if (transform_input(input_buf)) {
-            close(*fd);
+            close(sockfd);
+            pthread_mutex_destroy(&sent_lock);
             exit(0);
         }
 
         bcopy(input_buf, &send_segment.body, BODY_LEN);
 
-        if (write(*fd, &send_segment, SEGMENT_LEN) < 0) {
+        pthread_mutex_lock(&sent_lock);
+        sent = true;
+        pthread_mutex_unlock(&sent_lock);
+
+        if (write(sockfd, &send_segment, SEGMENT_LEN) < 0) {
             perror("write");
             return (void *) -1;
         }

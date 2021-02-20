@@ -189,8 +189,8 @@ int broadcast_to_authenticated_clients(char *str) {
         }
 
         if (write(curr->fd, &segment, SEGMENT_LEN) < 0) {
-            perror("write");
-            return -1;
+            fprintf(stderr, "client disconnected unexpectedly\n");
+            remove_client(curr->fd);
         }
     }
 
@@ -236,6 +236,7 @@ int read_from_client(int fd) {
     if (!curr->is_authenticated) {
         if (!strcmp(PASSWORD, segment.body)) {
             curr->is_authenticated = true;
+            bzero(segment.body, BODY_LEN);
             return 1;
         }
 
