@@ -12,6 +12,7 @@
 #define EXIT 0xb88db28a
 
 void *handle_input();
+uint hash_string(char *s);
 int transform_input(char *s);
 void *handle_recieve();
 void handle_sigint(int signum);

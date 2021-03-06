@@ -4,8 +4,8 @@
 #include <stdbool.h>
 #include "defs.h"
 
-#define PASSWORD "password"
-#define MAX_CLIENTS 10
+#define PASSWORD "cs3251secret"
+#define MAX_CLIENTS 512
 #define MAX_EVENTS MAX_CLIENTS + 1
 
 struct client_t {

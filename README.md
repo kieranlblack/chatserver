@@ -10,5 +10,9 @@ Start the server and connect with a client using
 ```bash
 ./server
 
-./client <username> password
+./client \
+    --username <username> \
+    --password cs3251secret \
+    --host 127.0.0.1 \
+    --port 5001
 ```

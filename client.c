@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <errno.h>
+#include <getopt.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -24,13 +25,55 @@ bool sent = false;
 int sockfd;
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        puts("Correct usage: ./client <username> <password>");
+    if (argc != 9) {
+        puts("Correct usage:");
+        puts("\t./client");
+        puts("\t\t --username <username>");
+        puts("\t\t --password cs3251secret");
+        puts("\t\t --host 127.0.0.1");
+        puts("\t\t --port 5001");
         return EXIT_FAILURE;
     }
 
-    strncpy(send_segment.header.username, argv[1], MAX_USERNAME_LEN);
-    strncpy(send_segment.body, argv[2], MAX_PASSWORD_LEN);
+    static struct option long_options[] = {
+        {"username", required_argument, 0, 0 },
+        {"password", required_argument, 0, 0 },
+        {"host",     required_argument, 0, 0 },
+        {"port",     required_argument, 0, 0 },
+        {0,          0,                 0, 0 }
+    };
+
+    struct {
+        char *username;
+        char *password;
+        char *host;
+        char *port;
+    } args;
+
+    // parse command line arguments
+    char **arg;
+    char c;
+    int option_index;
+    for (;;) {
+        if ((c = getopt_long_only(argc, argv, "", long_options, &option_index)) < 0) {
+            break;
+        }
+
+        switch (c) {
+        case 0:
+            arg = (char **) ((char *) &args + option_index * sizeof(char *));
+            if (!(*arg = malloc(MAX_USERNAME_LEN * sizeof(char)))) {
+                perror("malloc");
+                return EXIT_FAILURE;
+            }
+
+            strncpy(*arg, optarg, MAX_USERNAME_LEN);
+            break;
+        }
+    }
+
+    strncpy(send_segment.header.username, args.username, MAX_USERNAME_LEN);
+    strncpy(send_segment.body, args.password, MAX_PASSWORD_LEN);
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket");
@@ -39,10 +82,10 @@ int main(int argc, char **argv) {
 
     struct sockaddr_in serveraddr = {
         .sin_family = AF_INET,
-        .sin_port = htons(5001),
+        .sin_port = htons(strtol(args.port, NULL, 10)),
         .sin_zero = 0x0
     };
-    if (inet_pton(AF_INET, "127.0.0.1", &serveraddr.sin_addr) != 1) {
+    if (inet_pton(AF_INET, args.host, &serveraddr.sin_addr) != 1) {
         perror("inet_pton");
         return EXIT_FAILURE;
     }
@@ -128,15 +171,21 @@ void wrap_up(void) {
     exit(0);
 }
 
+uint hash_string(char *s) {
+    uint hash = 0x1;
+    for (char *ch = s; *ch; ch++) {
+        hash += hash * 31 + *ch;
+    }
+
+    return hash;
+}
+
 int transform_input(char *s) {
     if (!(*s) || *s != ':') {
         return 0;
     }
 
-    uint hash = 0x1;
-    for (char *ch = s; *ch; ch++) {
-        hash += hash * 31 + *ch;
-    }
+    uint hash = hash_string(s);
 
     time_t current_time;
     struct tm *broken_down_time;

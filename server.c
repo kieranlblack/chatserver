@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -209,6 +210,40 @@ int send_to_client(char *str, int fd) {
     return 1;
 }
 
+int perform_checks(int fd) {
+    int ret_flag = 0;
+
+    struct client_t *curr = client;
+    while (curr && curr->fd != fd) {
+        curr = curr->next;
+    }
+
+    if (!curr) {
+        fprintf(stderr, "fd does not exist\n");
+        return -1;
+    }
+
+    if (!curr->is_authenticated) {
+        if (strcmp(PASSWORD, segment.body)) {
+            send_to_client("<SERVER> incorrect password\n", fd);
+            return remove_client(fd);
+        }
+
+        curr->is_authenticated = true;
+        bzero(segment.body, BODY_LEN);
+        ret_flag = 1;
+    }
+
+    for (int i = 0; i < strnlen(segment.header.username, MAX_USERNAME_LEN); i++) {
+        if (!isalnum(segment.header.username[i])) {
+            send_to_client("<SERVER> username can only contain alphanumeric characters\n", fd);
+            return remove_client(fd);
+        }
+    }
+
+    return ret_flag;
+}
+
 char msg_buf[BODY_LEN];
 int read_from_client(int fd) {
     bzero(&segment, SEGMENT_LEN);
@@ -223,25 +258,9 @@ int read_from_client(int fd) {
         return -1;
     }
 
-    struct client_t *curr = client;
-    while (curr && curr->fd != fd) {
-        curr = curr->next;
-    }
-
-    if (!curr) {
-        fprintf(stderr, "fd does not exist\n");
-        return -1;
-    }
-
-    if (!curr->is_authenticated) {
-        if (!strcmp(PASSWORD, segment.body)) {
-            curr->is_authenticated = true;
-            bzero(segment.body, BODY_LEN);
-            return 1;
-        }
-
-        send_to_client("<SERVER> incorrect password\n", fd);
-        return remove_client(fd);
+    int check_res;
+    if ((check_res = perform_checks(fd))) {
+        return check_res;
     }
 
     bzero(msg_buf, BODY_LEN);
