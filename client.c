@@ -48,7 +48,9 @@ int main(int argc, char **argv) {
         char *password;
         char *host;
         char *port;
-    } args;
+    } args = {
+        NULL, NULL, NULL, NULL
+    };
 
     // parse command line arguments
     char **arg;
@@ -70,6 +72,11 @@ int main(int argc, char **argv) {
             strncpy(*arg, optarg, MAX_USERNAME_LEN);
             break;
         }
+    }
+
+    if (!args.username || !args.password || !args.host || !args.port) {
+        printf("Missing 1 or more required arguments!\n");
+        return EXIT_SUCCESS;
     }
 
     strncpy(send_segment.header.username, args.username, MAX_USERNAME_LEN);
@@ -101,10 +108,13 @@ int main(int argc, char **argv) {
     };
     sigaction(SIGINT, &act, NULL);
 
+    // send password
     if (write(sockfd, &send_segment, SEGMENT_LEN) < 0) {
         perror("write");
         return EXIT_FAILURE;
     }
+
+    printf("connected to %s on port %s\n", args.host, args.port);
 
     if (pthread_mutex_init(&sent_lock, NULL)) {
         perror("pthread_mutex_init");
@@ -158,7 +168,7 @@ void *handle_recieve() {
         sent = 0;
         pthread_mutex_unlock(&sent_lock);
 
-        printf("\033[F\033[J%.*s", (int) strnlen(segment.body, BODY_LEN) - 1, segment.body);
+        printf("\033[F\033[J%.*s", (int) strnlen(segment.body, BODY_LEN), segment.body);
         printf("<%s> ", send_segment.header.username);
         fflush(stdout);
     }
@@ -238,6 +248,9 @@ void *handle_input() {
             wrap_up();
         }
 
+        int body_len = strnlen(input_buf, BODY_LEN) - 1;
+        input_buf[body_len] = '\n';
+        input_buf[body_len + 1] = 0x0;
         bcopy(input_buf, &send_segment.body, BODY_LEN);
 
         pthread_mutex_lock(&sent_lock);

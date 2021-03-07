@@ -19,5 +19,6 @@ int remove_client(int fd);
 int read_from_client(int fd);
 int broadcast_to_authenticated_clients(char *str);
 int send_to_client(char *str, int fd);
+int log_message(char *);
 
 #endif

@@ -73,7 +73,6 @@ int main(void) {
             int fd = events[i].data.fd;
 
             if (fd == listenfd) {
-                puts("new client connecting");
                 if (accept_client(listenfd) < 0) {
                     return EXIT_FAILURE;
                 }
@@ -86,8 +85,6 @@ int main(void) {
                 }
                 continue;
             }
-
-            printf("num clients: %d\n", num_clients);
 
             if (read_from_client(fd) < 0) {
                 return EXIT_FAILURE;
@@ -232,6 +229,11 @@ int perform_checks(int fd) {
         curr->is_authenticated = true;
         bzero(segment.body, BODY_LEN);
         ret_flag = 1;
+
+        char join_msg[MAX_USERNAME_LEN + 22];
+        sprintf(join_msg, "%s joined the chatroom\n", segment.header.username);
+        log_message(join_msg);
+        broadcast_to_authenticated_clients(join_msg);
     }
 
     for (int i = 0; i < strnlen(segment.header.username, MAX_USERNAME_LEN); i++) {
@@ -264,8 +266,18 @@ int read_from_client(int fd) {
     }
 
     bzero(msg_buf, BODY_LEN);
-    snprintf(msg_buf, BODY_LEN, "<%s> %.*s\n", segment.header.username, (int) strnlen(segment.body, BODY_LEN), segment.body);
-    fputs(msg_buf, stdout);
+    snprintf(msg_buf, BODY_LEN, "<%s> %.*s", segment.header.username, (int) strnlen(segment.body, BODY_LEN), segment.body);
+
+    // remove double newline for our logs
+    // msg_buf[msg_len - 1] = 0x0;
+    log_message(msg_buf);
 
     return broadcast_to_authenticated_clients(msg_buf);
+}
+
+int log_message(char *s) {
+    FILE *fp = fopen("./serverout.log", "a");
+    fputs(s, stdout);
+    fputs(s, fp);
+    fclose(fp);
 }
