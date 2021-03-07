@@ -24,13 +24,22 @@ pthread_t handle_recieve_thread;
 bool sent = false;
 int sockfd;
 
+struct {
+    char *username;
+    char *password;
+    char *host;
+    char *port;
+} args = {
+    NULL, NULL, NULL, NULL
+};
+
 int main(int argc, char **argv) {
     if (argc != 9) {
         puts("Correct usage:");
-        puts("\t./client");
-        puts("\t\t --username <username>");
-        puts("\t\t --password cs3251secret");
-        puts("\t\t --host 127.0.0.1");
+        puts("\t./client \\");
+        puts("\t\t --username <username> \\");
+        puts("\t\t --password cs3251secret \\");
+        puts("\t\t --host 127.0.0.1 \\");
         puts("\t\t --port 5001");
         return EXIT_FAILURE;
     }
@@ -41,15 +50,6 @@ int main(int argc, char **argv) {
         {"host",     required_argument, 0, 0 },
         {"port",     required_argument, 0, 0 },
         {0,          0,                 0, 0 }
-    };
-
-    struct {
-        char *username;
-        char *password;
-        char *host;
-        char *port;
-    } args = {
-        NULL, NULL, NULL, NULL
     };
 
     // parse command line arguments
@@ -232,16 +232,25 @@ void *handle_input() {
     sigaction(SIGINT, &act, NULL);
 
     char input_buf[BODY_LEN] = {};
-    uint8_t chars_input;
+    uint16_t chars_input;
 
+    char c;
     while (!sigint_received) {
         bzero(input_buf, BODY_LEN);
         chars_input = 0;
 
-        while ((input_buf[chars_input++] = fgetc(stdin)) != '\n') {
+        while (chars_input < BODY_LEN && ((input_buf[chars_input++] = fgetc(stdin)) != '\n')) {
             if (errno == EINTR) {
                 wrap_up();
             }
+        }
+
+        if (chars_input >= BODY_LEN) {
+            printf("your message has been capped at 1024 bytes, please enter a shorter message next time\n\n");
+            while ((c = getchar()) != '\n' && c != EOF);
+
+            input_buf[BODY_LEN - strnlen(args.username, MAX_USERNAME_LEN) - 3 - 2] = '\n';
+            input_buf[BODY_LEN - strnlen(args.username, MAX_USERNAME_LEN) - 3 - 1] = 0x0;
         }
 
         if (transform_input(input_buf)) {
