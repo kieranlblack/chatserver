@@ -11,7 +11,7 @@
 #include <sys/types.h>
 #include <sys/unistd.h>
 
-#include "server.h"
+#include "chatserver.h"
 
 struct epoll_event events[MAX_EVENTS];
 int epollfd;
@@ -102,27 +102,29 @@ int remove_client(int fd) {
         return -1;
     }
 
-    if (num_clients == 1) {
-        char leave_msg[MAX_USERNAME_LEN + 20];
+    char leave_msg[MAX_USERNAME_LEN + 20];
+    if (num_clients == 1 || client->fd == fd) {
         sprintf(leave_msg, "%s left the chatroom\n", client->username);
         log_message(leave_msg);
         broadcast_to_authenticated_clients(leave_msg);
 
+        struct client_t *next_client = client->next;
         free(client);
-        client = NULL;
+        client = next_client;
     } else {
         struct client_t *curr = client;
         while (curr->next && curr->next->fd != fd) {
             curr = curr->next;
         }
 
-        char leave_msg[MAX_USERNAME_LEN + 20];
+        printf("%s", curr->username);
         sprintf(leave_msg, "%s left the chatroom\n", curr->next->username);
         log_message(leave_msg);
         broadcast_to_authenticated_clients(leave_msg);
 
+        struct client_t *next_client = curr->next->next;
         free(curr->next);
-        curr->next = NULL;
+        curr->next = next_client;
     }
 
     close(fd);

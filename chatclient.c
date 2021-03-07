@@ -12,7 +12,7 @@
 #include <sys/unistd.h>
 #include <time.h>
 
-#include "client.h"
+#include "chatclient.h"
 
 volatile sig_atomic_t sigint_received = false;
 

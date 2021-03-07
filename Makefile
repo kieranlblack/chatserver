@@ -1,19 +1,19 @@
 default: clean server client
 
-server.o: server.c server.h defs.h
-	gcc -c server.c -g -o server.o
+chatserver.o: chatserver.c chatserver.h defs.h
+	gcc -c chatserver.c -g -o chatserver.o
 
-server: server.o
-	gcc server.o -o server
+server: chatserver.o
+	gcc chatserver.o -o chatserver
 
-client.o: client.c client.h defs.h
-	gcc -c client.c -g -o client.o
+chatclient.o: chatclient.c chatclient.h defs.h
+	gcc -c chatclient.c -g -o chatclient.o
 
-client: client.o
-	gcc client.o -pthread -o client
+client: chatclient.o
+	gcc chatclient.o -pthread -o chatclient
 
 clean:
-	-rm -f server.o
-	-rm -f client.o
-	-rm -f server
-	-rm -f client
+	-rm -f chatserver.o
+	-rm -f chatclient.o
+	-rm -f chatserver
+	-rm -f chatclient
