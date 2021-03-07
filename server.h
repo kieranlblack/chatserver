@@ -11,6 +11,7 @@
 struct client_t {
     int fd;
     bool is_authenticated;
+    char username[MAX_USERNAME_LEN];
     struct client_t *next;
 };
 

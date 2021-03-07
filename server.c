@@ -103,6 +103,11 @@ int remove_client(int fd) {
     }
 
     if (num_clients == 1) {
+        char leave_msg[MAX_USERNAME_LEN + 20];
+        sprintf(leave_msg, "%s left the chatroom\n", client->username);
+        log_message(leave_msg);
+        broadcast_to_authenticated_clients(leave_msg);
+
         free(client);
         client = NULL;
     } else {
@@ -110,6 +115,11 @@ int remove_client(int fd) {
         while (curr->next && curr->next->fd != fd) {
             curr = curr->next;
         }
+
+        char leave_msg[MAX_USERNAME_LEN + 20];
+        sprintf(leave_msg, "%s left the chatroom\n", curr->next->username);
+        log_message(leave_msg);
+        broadcast_to_authenticated_clients(leave_msg);
 
         free(curr->next);
         curr->next = NULL;
@@ -230,6 +240,8 @@ int perform_checks(int fd) {
         bzero(segment.body, BODY_LEN);
         ret_flag = 1;
 
+        strncpy(curr->username, segment.header.username, MAX_USERNAME_LEN);
+
         char join_msg[MAX_USERNAME_LEN + 22];
         sprintf(join_msg, "%s joined the chatroom\n", segment.header.username);
         log_message(join_msg);
@@ -268,8 +280,6 @@ int read_from_client(int fd) {
     bzero(msg_buf, BODY_LEN);
     snprintf(msg_buf, BODY_LEN, "<%s> %.*s", segment.header.username, (int) strnlen(segment.body, BODY_LEN), segment.body);
 
-    // remove double newline for our logs
-    // msg_buf[msg_len - 1] = 0x0;
     log_message(msg_buf);
 
     return broadcast_to_authenticated_clients(msg_buf);
