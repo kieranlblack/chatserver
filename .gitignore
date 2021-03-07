@@ -1,6 +1,6 @@
 .vscode
-client
-server
+chatclient
+chatserver
 *.o
 valgrind-out.txt
 serverout.log

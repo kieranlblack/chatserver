@@ -1,16 +1,16 @@
 # Build Instructions
 Run `make` to use the provided Makefile or manually build the server and client with
 ```bash
-gcc server.c defs.h -o server
+gcc chatserver.c defs.h -o chatserver
 
-gcc client.c defs.h -pthread -o client
+gcc chatclient.c defs.h -pthread -o chatclient
 ```
 
 Start the server and connect with a client using
 ```bash
-./server
+./chatclientserver
 
-./client \
+./chatclient \
     --username <username> \
     --password cs3251secret \
     --host 127.0.0.1 \
